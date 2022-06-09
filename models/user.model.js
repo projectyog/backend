@@ -1,3 +1,4 @@
+const dotenv = require('dotenv');
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const Schema = mongoose.Schema;
@@ -39,4 +40,5 @@ this.password = hash;
 next();
 });
 
-module.exports = mongoose.model('user',userSchema);
+const Users = new mongoose.model("USER",userSchema)
+module.exports = Users;

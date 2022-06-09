@@ -18,7 +18,7 @@ const sendEmail = async(email,subject,payload,template) =>{
         const options = () =>{
             return {
                 from: process.env.FROM_EMAIL,
-                to:user.email,
+                to:email,
                 subject:"Password Reset",
                 html:compiledTemplate(payload),
             };
