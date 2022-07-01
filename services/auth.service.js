@@ -1,105 +1,101 @@
-const JWT = require('jsonwebtoken');
-const User = require('../models/user.model');
-const Token = require('../models/token.model');
-const sendEmail = require('../utils/emails/sendEmail');
-const crypto = require('crypto');
-const bcrypt = require('bcrypt');
+const JWT = require("jsonwebtoken");
+const User = require("../models/User.model");
+const Token = require("../models/Token.model");
+const sendEmail = require("../utils/emails/sendEmail");
+const crypto = require("crypto");
+const bcrypt = require("bcrypt");
 
+const JWTSecret = process.env.JWT_SECRET;
+const bcryptSalt = process.env.BCRYPT_SALT;
+const clientURL = process.env.CLIENT_URL;
 
-//  1.service for registration of user
+const signup = async (data) => {
+  let user = await User.findOne({ email: data.email });
+  if (user) {
+    throw new Error("Email already exist", 422);
+  }
+  user = new User(data);
+  const token = JWT.sign({ id: user._id }, JWTSecret);
+  await user.save();
+  res.status(200).send("Registered successfully");
 
-const signup = async (data)=>{
-    let user = await User.findOne({email:data.email});
-
-    if(user){
-        throw new Error(' Your Email already exist');
-    }
-    user = new User(data);
-
-    const token = JWT.sign({id:user._id},JWTSecret);
-    await user.save();
-    return(data = {
-        userId: user._id,
-        email:user.email,
-        name:user.name,
-        token: token,
-    });
+  return (data = {
+    userId: user._id,
+    email: user.email,
+    name: user.name,
+    token: token,
+  });
 };
 
-// 2. service for requesting password reset
+const requestPasswordReset = async (email) => {
+  const user = await User.findOne({ email });
+  if (!user) throw new Error("Email does not exist");
 
-const requestPasswordReset = async(email) =>{
-    const user = await User.findOne({email});
+  let token = await Token.findOne({ userId: user._id });
+  if (token) await token.deleteOne();
 
-    if(!user) throw new Error('Email doest not exist');
+  let resetToken = crypto.randomBytes(32).toString("hex");
+  const hash = await bcrypt.hash(resetToken, Number(bcryptSalt));
 
-    let token = await Token.findOne({userId:user._id})
-    if(token) await token.deleteOne();
+  await new Token({
+    userId: user._id,
+    token: hash,
+    createdAt: Date.now(),
+  }).save();
 
-    let resetToken = crypto.randomBytes(32).toString('hex');
-    const hash = await bcrypt.hash(resetToken,Number(bcryptSalt))
+  const link = `${clientURL}/passwordReset?token=${resetToken}&id=${user._id}`;
 
-   await new Token({
-       userId:_id,
-       token:hash,
-       createdAt:Date.now(),
-   }).save();
-
-   const link = `${clientURL}/passwordReset?token=${resetToken}&id=${user._id}`;
-
-   sendEmail(user.email,
-    "password reset request",
+  sendEmail(
+    user.email,
+    "Password Reset Request",
     {
-        name: user.name,
-        link: link,
+      name: user.name,
+      link: link,
     },
     "./template/requestResetPassword.handlebars"
-   );
-   return link;
+  );
+  return link;
 };
 
+const resetPassword = async (userId, token, password) => {
+  let passwordResetToken = await Token.findOne({ userId });
 
-// service for reset password
+  if (!passwordResetToken) {
+    throw new Error("Invalid or expired password reset token");
+  }
 
-const resetPassword = async(userId,token,password) =>{
-    let passwordResetToken = await Token.findOne({userId});
+  const isValid = await bcrypt.compare(token, passwordResetToken.token);
 
-    if(!passwordResetToken){
-        throw new Error("Invalid or expired password reset token");
-    }
+  if (!isValid) {
+    throw new Error("Invalid or expired password reset token");
+  }
 
-    const isValid = await bcrypt.compare(token,passwordResetToken.token);
+  const hash = await bcrypt.hash(password, Number(bcryptSalt));
 
-    if(!isValid){
-        throw new Error('Invalid or expired password reset token ');
-    }
-    
-    const hash = await bcrypt.hash(password,Number(bcrypt));
+  await User.updateOne(
+    { _id: userId },
+    { $set: { password: hash } },
+    { new: true }
+  );
 
-    await User.updateOne(
-        {_id:userId},
-        {$set:{password:hash} },
-        {new:true}
-    );
+  const user = await User.findById({ _id: userId });
 
-    const user = await User.findById({_id:userId});
+  sendEmail(
+    user.email,
+    "Password Reset Successfully",
+    {
+      name: user.name,
+    },
+    "./template/resetPassword.handlebars"
+  );
 
-    sendEmail(
-        user.email,
-        "your password reset successfully",
-        {
-            name : user.name,
-        },
-        "../template/resetPassword.handlebars"
-    );
+  await passwordResetToken.deleteOne();
 
-    await passwordResetToken.deleteOne();
-    return true;
-
+  return true;
 };
 
 module.exports = {
-    signup,
-    requestPasswordReset,
-    resetPassword,
-}
+  signup,
+  requestPasswordReset,
+  resetPassword,
+};

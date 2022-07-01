@@ -7,17 +7,17 @@ const cors = require('cors');
 dotenv.config({path : './config.env'});
 require('./db');
 
-const port = 8080;
+const PORT =process.env.PORT || 8081;
 
 app.use(cors());
+app.use(express.json());
 app.use('/api/v1',require('./routes/index.route'));
-
 app.use((error,req,res,next)=>{
    res.status(500).json({error:error.message})
 });
 
-app.listen(port,()=>{
-   console.log('Listening to port',port)
+app.listen(PORT,()=>{
+   console.log('Listening to port',PORT)
 });
 
 module.exports = app;
